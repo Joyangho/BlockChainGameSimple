@@ -13,11 +13,12 @@ const Network = 80001;
 var WalletAddress = "";
 var WalletBalance = "";
 
-function networkCheck(){
+function networkCheck() {
     if (window.web3._provider.networkVersion != Network) {
         alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
-        return;
-      }
+        return true; // 네트워크가 일치하지 않을 때
+    }
+    return false; // 네트워크가 일치
 }
 
 async function connectWallet() {
@@ -29,8 +30,9 @@ async function connectWallet() {
         }
         await window.ethereum.send('eth_requestAccounts');
         window.web3 = new Web3(window.ethereum);
-        if (window.web3._provider.networkVersion != Network) {
-            alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
+        if (networkCheck()) {
+            // 네트워크가 일치하지 않으면 종료
+            return;
         }
 
         var accounts = await web3.eth.getAccounts();
@@ -121,7 +123,10 @@ async function TokenAdd() {
 
 // 토큰 스왑
 async function purchaseTokens() {
-    networkCheck();
+    if (networkCheck()) {
+        // 네트워크가 일치하지 않으면 종료
+        return;
+    }
     await window.ethereum.send('eth_requestAccounts');
     window.web3 = new Web3(window.ethereum);
     contract = new web3.eth.Contract(ABI, ADDRESS);
@@ -147,7 +152,10 @@ async function purchaseTokens() {
 
 async function startSABUGame() {
     // SABU 게임 시작 로직을 추가
-    networkCheck();
+    if (networkCheck()) {
+        // 네트워크가 일치하지 않으면 종료
+        return;
+    }
     console.log("SABU Game started!");
 
     // Metamask에 추가할 토큰 정보
@@ -180,7 +188,10 @@ async function startSABUGame() {
 
 async function sendTokenToAddress(toAddress, amount, ADDRESS) {
     try {
-        networkCheck();
+        if (networkCheck()) {
+            // 네트워크가 일치하지 않으면 종료
+            return;
+        }
         // MetaMask에 계정 요청
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         const WalletAddress = accounts[0];
