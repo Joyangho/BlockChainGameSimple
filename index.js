@@ -14,6 +14,10 @@ var WalletAddress = "";
 var WalletBalance = "";
 
 async function connectWallet() {
+    if (window.web3._provider.networkVersion != Network) {
+        alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
+        return;
+      }
     if (window.ethereum) {
         if (window.ethereum.isTrust) {
             alert("Trust Wallet is not supported. Please use another wallet.", "", "warning");
@@ -112,6 +116,10 @@ async function TokenAdd() {
 
 // 토큰 스왑
 async function purchaseTokens() {
+    if (window.web3._provider.networkVersion != Network) {
+        alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
+        return;
+      }
     await window.ethereum.send('eth_requestAccounts');
     window.web3 = new Web3(window.ethereum);
     contract = new web3.eth.Contract(ABI, ADDRESS);
@@ -137,6 +145,10 @@ async function purchaseTokens() {
 
 async function startSABUGame() {
     // SABU 게임 시작 로직을 추가
+    if (window.web3._provider.networkVersion != Network) {
+        alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
+        return;
+      }
     console.log("SABU Game started!");
 
     // Metamask에 추가할 토큰 정보
@@ -169,6 +181,10 @@ async function startSABUGame() {
 
 async function sendTokenToAddress(toAddress, amount, ADDRESS) {
     try {
+        if (window.web3._provider.networkVersion != Network) {
+            alert("Please connect correct network", "", "warning");
+            return;
+          }
         // MetaMask에 계정 요청
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         const WalletAddress = accounts[0];
