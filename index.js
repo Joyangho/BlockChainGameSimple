@@ -96,7 +96,10 @@ async function setMintCount() {
 Token을 메타마스크에 추가하는 함수
 */
 async function TokenAdd() {
-    networkCheck();
+    if (networkCheck()) {
+        // 네트워크가 일치하지 않으면 함수 종료
+        return;
+    }
     // Metamask에 추가할 토큰 정보
     const tokenInfo = {
         type: "ERC20", // 토큰 종류 (ERC20, BEP20 등)
