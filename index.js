@@ -22,10 +22,9 @@ function networkCheck() {
 }
 
 async function connectWallet() {
-    networkCheck();
     if (window.ethereum) {
         if (window.ethereum.isTrust) {
-            alert("Trust Wallet is not supported. Please use another wallet.", "", "warning");
+            alert("트러스트 월렛말고 메타마스크를 사용해주세요.", "", "warning");
             return;
         }
         await window.ethereum.send('eth_requestAccounts');
