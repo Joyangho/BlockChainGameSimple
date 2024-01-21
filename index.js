@@ -90,6 +90,10 @@ async function setMintCount() {
 Token을 메타마스크에 추가하는 함수
 */
 async function TokenAdd() {
+    if (window.web3._provider.networkVersion != Network) {
+        alert("폴리곤 mumbai로 네트워크를 변경해주세요.", "", "warning");
+        return;
+      }
     // Metamask에 추가할 토큰 정보
     const tokenInfo = {
         type: "ERC20", // 토큰 종류 (ERC20, BEP20 등)
