@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>BlockChain Game</title>
+    <style>
+        body {
+            background-color: skyblue;
+            display: flex;
+            justify-content: space-between;
+            color: white; /* 텍스트 색상을 화이트로 변경 */
+        }
+
+        #wrapper {
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            background-color: rgb(99, 149, 168);
+        }
+
+        .section {
+            flex: 1;
+            padding: 30px;
+            text-align: center;
+            border-bottom: 3px solid #eee;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .split-section {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .game-section {
+            flex: 1;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .start-game-box {
+            flex: 1;
+            padding: 30px;
+            text-align: center;
+            background-color: rgb(99, 149, 168);
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            margin-left: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="wrapper">
+        <div class="section">
+            <h1>지갑 정보</h1>
+            <button id="btnConnectWallet" onclick="connectWallet()" style="padding: 10px;">
+                <h3>지갑 연결</h3>
+            </button>
+            <div id="walletInfo" style="display: none;">
+                <a>지갑 주소 : </a><a id="txtWalletAddress">-</a>
+                <br><br>
+                <a>가진 폴리곤 개수 : </a><a id="txtWalletBalance">-</a><a> Ether</a>
+                <br><br>
+                <a>가진 SABU Token 개수 : </a><a id="balanceOfToken">-</a><a> SABU</a>
+            </div>
+        </div>
+        <div class="section">
+            <h1>토큰 발행량</h1>
+            <a id="txtTotalSupply">-</a>/<a id="txtMaxSupply">-</a>
+        </div>
+        <div class="section split-section">
+            <div>
+                <h1>게임 토큰 구매</h1> <br> <a>환율: 1 SABU = 0.0001 MATIC </a><br>
+                <label for="txtMintAmount">구매할 SABU Token 수량:</label>
+                <input type="number" id="txtMintAmount" oninput="calculateResult()">
+                <p id="result">필요한 MATIC: 0</p>
+                <button onclick="TokenAdd()"> <h3>SABU 토큰 메타마스크 추가</h3></button>
+                <button onclick="purchaseTokens()" style="margin: 15px; padding-left:20px; padding-right: 20px;">
+                    <h3>토큰 구매</h3>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="start-game-box">
+        <h1>Start SABU Game</h1>
+        <a>** 주의사항 ** <br>
+            폴리곤 테스트넷인 Mumbai 네트워크를 사용하며 토큰은 아무런 가치가 없습니다.<br><br>
+            ** Game Rule ** <br>
+            1. 게임 한 번 참가할 비용은 1 SABU입니다.<br>
+            2. 시작 버튼을 누르면 4개의 버튼이 생성됩니다.<br>
+            3. 4개의 버튼 중 이길 확률은 각각 25%이며, 이 확률은 블록체인에 기록되어있습니다.<br>
+            4. 블록체인에 코딩된 25% 확률은 누구나 열람할 수 있지만, 아무도 수정할 수 없습니다.<br>
+            5. 당첨된 1개의 버튼을 클릭 시 4 SABU가 당첨(기대값 일치)됩니다.<br>
+            6. 당첨되지 않은 나머지 버튼을 클릭 시 참가비용의 1 SABU는 사라집니다.<br>
+            7. 마지막으로 당첨된 4 SABU는 즉시 지갑에 입급됩니다.<br>
+        </a>
+        <br><br><br>
+        <button onclick="startSABUGame()" id="startButton" style="margin: 15px; padding-left:20px; padding-right: 20px;">
+            <h3>스타트 게임</h3>
+        </button><br>
+    </div>
+    <script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js/dist/web3.min.js"></script>
+    <script type="text/javascript" src="smartcontract.js"></script>
+    <script type="text/javascript" src="index.js"></script>
+</body>
+
+</html>
