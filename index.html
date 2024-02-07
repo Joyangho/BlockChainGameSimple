@@ -3,58 +3,81 @@
 
 <head>
     <meta charset="utf-8">
-    <title>BlockChain Game</title>
+    <title>BlockChain Casino Game</title>
+
+
     <style>
         body {
             background-color: skyblue;
             display: flex;
-            justify-content: space-between;
-            color: white; /* 텍스트 색상을 화이트로 변경 */
+            flex-direction: column;
+            align-items: center;
+            color: rgb(0, 89, 255);
+            border: 3px solid #eee;
+            font-size: 1rem;
+            font-weight: bold;
         }
 
         #wrapper {
             padding: 20px;
-            max-width: 600px;
-            margin: 0 auto;
-            border: 1px solid #ccc;
-            border-radius: 10px;
+            width: 80%;
             display: flex;
             flex-wrap: wrap;
-            background-color: rgb(99, 149, 168);
+            background-color: rgb(54, 152, 190);
+            border: 3px solid #eee;
         }
 
         .section {
             flex: 1;
             padding: 30px;
             text-align: center;
-            border-bottom: 3px solid #eee;
+            border: 3px solid #eee;
         }
 
-        .section:last-child {
-            border-bottom: none;
-        }
-
-        .split-section {
+        .game-box-container {
+            flex: 1;
             display: flex;
             justify-content: space-between;
-        }
-
-        .game-section {
-            flex: 1;
             padding: 30px;
-            text-align: center;
-        }
-
-        .start-game-box {
-            flex: 1;
-            padding: 30px;
-            text-align: center;
-            background-color: rgb(99, 149, 168);
+            background-color: lightblue;
             border: 1px solid #ccc;
             border-radius: 10px;
-            margin-left: 20px;
+            width: 80%;
+            margin-top: 20px;
+            border: 3px solid #eee;
+        }
+
+        .game-box {
+            width: 48%;
+            /* 좌우 여백을 주기 위해 48%로 설정 */
+            text-align: center;
+            border: 3px solid #eee;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 20px;
+            border: none;
+            background-color: rgb(0, 170, 255);
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        button:hover {
+            background-color: rgb(0, 140, 205);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+        .red-text {
+            color: red;
         }
     </style>
+
 </head>
 
 <body>
@@ -69,47 +92,91 @@
                 <br><br>
                 <a>가진 폴리곤 개수 : </a><a id="txtWalletBalance">-</a><a> Ether</a>
                 <br><br>
-                <a>가진 SABU Token 개수 : </a><a id="balanceOfToken">-</a><a> SABU</a>
+                <a>가진 SABU Token 개수 : </a><a id="balanceOfToken">-</a><a> SABU</a><br><br>
+                <button id="walletrefresh">Wallet Refresh</button><br><br>
             </div>
-        </div>
-        <div class="section">
-            <h1>토큰 발행량</h1>
+            <h1>SABU 토큰 총 발행량</h1>
             <a id="txtTotalSupply">-</a>/<a id="txtMaxSupply">-</a>
         </div>
-        <div class="section split-section">
-            <div>
-                <h1>게임 토큰 구매</h1> <br> <a>환율: 1 SABU = 0.0001 MATIC </a><br>
-                <label for="txtMintAmount">구매할 SABU Token 수량:</label>
-                <input type="number" id="txtMintAmount" oninput="calculateResult()">
-                <p id="result">필요한 MATIC: 0</p>
-                <button onclick="TokenAdd()"> <h3>SABU 토큰 메타마스크 추가</h3></button>
-                <button onclick="purchaseTokens()" style="margin: 15px; padding-left:20px; padding-right: 20px;">
-                    <h3>토큰 구매</h3>
+        <div class="section">
+            <h1>게임 토큰 구매</h1> <br> <a>환율: 1 SABU = 0.0001 MATIC </a><br>
+            <label for="txtMintAmount">구매할 SABU Token 수량:</label>
+            <input type="number" id="txtMintAmount" oninput="calculateResult()"><br><br>
+            <span class="red-text" id="result">필요한 MATIC: 0</span><br>
+            <button onclick="TokenAdd()">
+                <h3>SABU 토큰 메타마스크 추가</h3>
+            </button>
+            <button onclick="purchaseTokens()" style="margin: 15px; padding-left:20px; padding-right: 20px;">
+                <h3>토큰 구매</h3>
+            </button>
+        </div>
+    </div>
+    <div class="game-box-container">
+        <div class="game-box">
+            <div class="start-game-box">
+                <h1>Box Game(x4)</h1>
+                <a><span class="red-text">** 주의사항 **</span><br>
+                    * 폴리곤 테스트넷인 Mumbai 네트워크를 사용하며 토큰은 아무런 가치가 없습니다.<br>
+                    * 메타마스크가 웹에 설치되어 있지 않다면, 버튼은 작동하지 않습니다.<br><br>
+                    
+                    * 참가 금액: 1 SABU<br>
+                    * 당첨 금액: 4 SABU<br><br>
+
+                    ** Game Rule ** <br>
+                    -- 시작 버튼을 누르면 4개의 버튼이 생성됩니다.<br>
+                    -- 4개의 버튼 중 이길 확률은 각각 25%이며, 이 확률은 블록체인에 기록되어있습니다.<br>
+                    -- 블록체인에 코딩된 25% 확률은 누구나 열람할 수 있지만, 아무도 수정할 수 없습니다.<br>
+                    -- 당첨된 1개의 버튼을 클릭 시 4 SABU가 당첨(기대값 일치)됩니다.<br>
+                    -- 당첨되지 않은 나머지 버튼을 클릭 시 참가비용의 1 SABU는 사라집니다.<br>
+                    -- 마지막으로 당첨된 4 SABU는 즉시 지갑에 입급됩니다.<br>
+                </a>
+                <br><br><br>
+                <button onclick="startSABUGame()" id="startButton"
+                    style="margin: 15px; padding-left:20px; padding-right: 20px;">
+                    <h3>Game Start</h3>
+                </button><br>
+            </div>
+        </div>
+        <div class="game-box">
+            <div class="start-number-game">
+                <h1>Blue & <span class="red-text">Red</span> Game(x2)</h1>
+                <a><span class="red-text">** 주의사항 **</span><br>
+                    * 폴리곤 테스트넷인 Mumbai 네트워크를 사용하며 토큰은 아무런 가치가 없습니다.<br>
+                    * 메타마스크가 웹에 설치되어 있지 않다면, 버튼은 작동하지 않습니다.<br><br>
+
+                    * 참가 금액: 1 SABU<br>
+                    * 당첨 금액: 2 SABU<br><br>
+
+                    ** Game Rule ** <br>
+                    -- 시작 버튼을 누르면 2개의 버튼이 생성됩니다.<br>
+                    -- 2개의 버튼 중 이길 확률은 각각 50%이며, 이 확률은 블록체인에 기록되어있습니다.<br>
+                    -- 블록체인에 코딩된 50% 확률은 누구나 열람할 수 있지만, 아무도 수정할 수 없습니다.<br>
+                    -- 당첨된 1개의 버튼을 클릭 시 2 SABU가 당첨(무승부 때문에 기대값 불일치)됩니다.<br>
+                    -- 무승부 또는 선택한 숫자가 작다면 참가비용의 1 SABU는 사라집니다.<br>
+                    -- 마지막으로 당첨된 2 SABU는 적립한 후 한번에 환전할 수 있습니다.<br><br><br>
+                </a>
+                <button onclick="startNUMBERGame()" style="margin: 15px; padding-left:20px; padding-right: 20px;">
+                    <h3>Game Start</h3>
                 </button>
+                <div id="results"></div><br><br>
+                <a>컨트랙트 보상에 할당된 토큰 잔액 : </a><a id="maxWinTokenbalance">-</a><br>
+                <button onclick="viewContractTokenBalance()" id="viewBalanceButton">View Contract Token
+                    Balance</button><br><br>
+
+                <div id="balance">
+                    <a>당첨된 토큰 잔액 : </a><a id="balanceAmount">-</a><br>
+                    <button onclick="getTokenBalance()" id="refreshBalance">Balance Refresh</button><br><br>
+                </div>
+                <div>
+                    <button onclick="withdrawTokens()" id="withdrawButton">Withdraw Tokens</button>
+                </div>
             </div>
         </div>
     </div>
-    <div class="start-game-box">
-        <h1>Start SABU Game</h1>
-        <a>** 주의사항 ** <br>
-            * 폴리곤 테스트넷인 Mumbai 네트워크를 사용하며 토큰은 아무런 가치가 없습니다.<br>
-            * 메타마스크가 웹에 설치되어 있지 않다면, 버튼은 작동하지 않습니다.<br><br>
-            ** Game Rule ** <br>
-            1. 게임 한 번 참가할 비용은 1 SABU입니다.<br>
-            2. 시작 버튼을 누르면 4개의 버튼이 생성됩니다.<br>
-            3. 4개의 버튼 중 이길 확률은 각각 25%이며, 이 확률은 블록체인에 기록되어있습니다.<br>
-            4. 블록체인에 코딩된 25% 확률은 누구나 열람할 수 있지만, 아무도 수정할 수 없습니다.<br>
-            5. 당첨된 1개의 버튼을 클릭 시 4 SABU가 당첨(기대값 일치)됩니다.<br>
-            6. 당첨되지 않은 나머지 버튼을 클릭 시 참가비용의 1 SABU는 사라집니다.<br>
-            7. 마지막으로 당첨된 4 SABU는 즉시 지갑에 입급됩니다.<br>
-        </a>
-        <br><br><br>
-        <button onclick="startSABUGame()" id="startButton" style="margin: 15px; padding-left:20px; padding-right: 20px;">
-            <h3>스타트 게임</h3>
-        </button><br>
     </div>
     <script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js/dist/web3.min.js"></script>
     <script type="text/javascript" src="smartcontract.js"></script>
+    <script type="text/javascript" src="smartcontractCard.js"></script>
     <script type="text/javascript" src="index.js"></script>
 </body>
 

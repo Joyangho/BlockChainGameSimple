@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Game</title>
+    <style>
+        body {
+            text-align: center;
+        }
+        .section {
+            display: inline-block;
+            text-align: left;
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid black;
+        }
+        button {
+            padding: 10px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="section">
+        <h1>지갑 정보</h1>
+        <button id="btnConnectWallet" onclick="connectWallet()">
+            <h3>지갑 연결</h3>
+        </button>
+        <div id="walletInfo" style="display: none;">
+            <a>지갑 주소 : </a><a id="txtWalletAddress">-</a>
+            <br><br>
+            <a>가진 폴리곤 개수 : </a><a id="txtWalletBalance">-</a><a> Ether</a>
+            <br><br>
+            <a>가진 SABU Token 개수 : </a><a id="balanceOfToken">-</a><a> SABU</a>
+        </div>
+    </div>
+    <a href="index.html"><button>HOME</button></a>
+    <h1>Card Game</h1>
+    <button id="playBlue">Choice Blue</button>
+    <button id="playRed">Choice Red</button>
+    <div id="results"></div>
+    <script type="text/javascript">
+        // 컨트랙트 주소 및 ABI 정의
+        const CONTRACT_ADDRESS = ADDRESS_CARD;
+        const CONTRACT_ABI = ABI_CARD;
+
+        // Web3 인스턴스 생성
+        const web3 = new Web3(Web3.givenProvider);
+
+        // 계정 가져오기
+        async function getAccount() {
+            const accounts = await web3.eth.requestAccounts();
+            return accounts[0];
+        }
+
+        // playCard 함수 호출
+        async function playCard(isBlue) {
+            const account = await getAccount();
+            const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+            try {
+                await contract.methods.playCard(isBlue).send({ from: account });
+                console.log('Transaction successful');
+            } catch (error) {
+                console.error('Transaction failed:', error);
+            }
+        }
+
+        // 결과 가져오기
+        async function getResults() {
+            const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+            const results = await contract.methods.getPreviousResults().call();
+            return results;
+        }
+
+        // 이벤트 처리
+        document.getElementById('playBlue').addEventListener('click', async () => {
+            await playCard(true);
+            const results = await getResults();
+            document.getElementById('results').innerHTML = `Blue Number: ${results[0]} - Red Number: ${results[1]}`;
+        });
+
+        document.getElementById('playRed').addEventListener('click', async () => {
+            await playCard(false);
+            const results = await getResults();
+            document.getElementById('results').innerHTML = `Blue Number: ${results[0]} - Red Number: ${results[1]}`;
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js/dist/web3.min.js"></script>
+    <script type="text/javascript" src="index.js"></script>
+    <script type="text/javascript" src="smartcontract.js"></script>
+    <script type="text/javascript" src="smartcontractCard.js"></script>
+</body>
+</html>

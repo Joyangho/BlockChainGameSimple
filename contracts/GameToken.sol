@@ -95,7 +95,7 @@ contract GameTokenSABU is ERC20, Ownable, Pausable {
         _mint(msg.sender, tokenAmount * (10 ** decimals()));
     }
 
-    // 스왑에 판매된 이더리움 인출
+    // 판매된 이더리움 인출
     function withdraw() public payable onlyOwner{
         (bool os, ) = payable(owner()).call {
             value: address(this).balance
@@ -108,14 +108,9 @@ contract GameTokenSABU is ERC20, Ownable, Pausable {
         return hasWon[player];
     }
 
-    function resetWonBox(address player) public {
-        hasWon[player] = false;
-    }
-
-
     // 박스 선택 함수, 당첨 시 4 SABU 지급
     function chooseBox(address player) public returns (bool) {
-        require(maxSupply >= totalSupply() + 4, "Exceeds max supply");
+        require(maxSupply > totalSupply() + 4 * (10 ** decimals()), "Exceeds max supply");
         hasWon[player] = false;
         // 간단한 랜덤 로직 (실제로는 더 복잡한 로직 필요)
         uint256 randomNumber = uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender))) % 4;
@@ -126,7 +121,6 @@ contract GameTokenSABU is ERC20, Ownable, Pausable {
             hasWon[msg.sender] = true;
             return true;
         }
-
         return false;
     }
 }
