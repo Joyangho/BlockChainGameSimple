@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -12,12 +11,11 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
 
 contract GameTokenSABU_VRF is
     ERC20,
-    ERC20Burnable,
     Pausable,
     ReentrancyGuard,
     VRFConsumerBaseV2Plus
 {
-    // ---- Token Sale (옵션) ----
+    // ---- Token Sale ----
     uint256 public immutable tokenPriceWei; // 1 SABU(whole) 당 wei
     uint256 public immutable maxSupply;     // base unit (10^decimals 포함)
 
@@ -26,8 +24,8 @@ contract GameTokenSABU_VRF is
     uint256 public immutable rewardBase;    // 4 SABU in base units
 
     // ---- Timeouts ----
-    uint256 public immutable vrfTimeoutSeconds;     // VRF 응답 지연 시 환불 가능
-    uint256 public immutable revealTimeoutSeconds;  // VRF 도착 후 리빌 안 하면 몰수(정리)
+    uint256 public immutable vrfTimeoutSeconds;
+    uint256 public immutable revealTimeoutSeconds;
 
     mapping(address => bool) public hasWon;
 
@@ -46,9 +44,9 @@ contract GameTokenSABU_VRF is
         GameState state;
         uint256 requestId;
         bytes32 pickCommit;   // keccak256(player, pickedIndex, salt)
-        uint256 randomWord;   // VRF 결과(정답 인덱스는 저장하지 않음)
-        uint64  startedAt;    // startGame 시각
-        uint64  readyAt;      // VRF 도착 시각(READY_TO_REVEAL 전환)
+        uint256 randomWord;   // VRF 결과
+        uint64  startedAt;
+        uint64  readyAt;
     }
 
     mapping(address => Session) private sessions;
@@ -239,8 +237,6 @@ contract GameTokenSABU_VRF is
         emit BoxRevealed(msg.sender, pickedIndex, winningIndex, won);
     }
 
-    /// @notice VRF가 너무 늦으면(구독 문제/가스 부족/네트워크 지연) 참가비 환불 + 세션 취소
-    /// @dev READY_TO_REVEAL 이후에는 환불 금지(정답 보고 환불 악용 방지)
     function cancelAfterVrfTimeout() external nonReentrant {
         Session memory s = sessions[msg.sender];
         require(s.state == GameState.WAITING_VRF, "not waiting");
@@ -254,8 +250,6 @@ contract GameTokenSABU_VRF is
         emit VrfTimeoutCancelled(msg.sender, s.requestId, entryFeeBase);
     }
 
-    /// @notice VRF는 왔는데 유저가 reveal을 안 하면 세션을 정리(참가비 소각)해서 다음 게임 가능하게 함
-    /// @dev 환불은 절대 없음(정답 확인 후 유리할 때만 reveal하는 전략을 차단)
     function forfeitAfterRevealTimeout(address player) external nonReentrant {
         Session memory s = sessions[player];
         require(s.state == GameState.READY_TO_REVEAL, "not reveal state");
@@ -268,7 +262,6 @@ contract GameTokenSABU_VRF is
         emit RevealTimeoutForfeited(player, s.requestId, entryFeeBase);
     }
 
-    // UI 조회용
     function getSession(address player)
         external
         view
@@ -296,5 +289,13 @@ contract GameTokenSABU_VRF is
     function _mintWithCap(address to, uint256 amountBase) internal {
         require(totalSupply() + amountBase <= maxSupply, "cap exceeded");
         _mint(to, amountBase);
+    }
+
+    function _update(address from, address to, uint256 value)
+        internal
+        override
+        whenNotPaused
+    {
+        super._update(from, to, value);
     }
 }
