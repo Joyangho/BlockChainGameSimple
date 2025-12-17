@@ -25,6 +25,10 @@ contract GameTokenSABU_VRF is
     uint256 public immutable entryFeeBase;  // 1 SABU in base units
     uint256 public immutable rewardBase;    // 4 SABU in base units
 
+    // ---- Timeouts ----
+    uint256 public immutable vrfTimeoutSeconds;     // VRF 응답 지연 시 환불 가능
+    uint256 public immutable revealTimeoutSeconds;  // VRF 도착 후 리빌 안 하면 몰수(정리)
+
     mapping(address => bool) public hasWon;
 
     // ---- VRF Config ----
@@ -33,24 +37,33 @@ contract GameTokenSABU_VRF is
     uint16 public immutable requestConfirmations;
     uint32 public immutable callbackGasLimit;
 
-    // ---- Game Session (Commit/Reveal) ----
+    bool public payWithNative; // 운영자가 고정 (유저 입력 제거)
+
+    // ---- Game Session (Escrow + Commit/Reveal) ----
     enum GameState { NONE, WAITING_VRF, READY_TO_REVEAL }
 
     struct Session {
         GameState state;
         uint256 requestId;
         bytes32 pickCommit;   // keccak256(player, pickedIndex, salt)
-        uint256 randomWord;   // VRF 결과 (리빌 전까지는 "정답 인덱스"를 저장하지 않음)
+        uint256 randomWord;   // VRF 결과(정답 인덱스는 저장하지 않음)
+        uint64  startedAt;    // startGame 시각
+        uint64  readyAt;      // VRF 도착 시각(READY_TO_REVEAL 전환)
     }
 
     mapping(address => Session) private sessions;
     mapping(uint256 => address) private requestToPlayer;
 
+    // ---- Events ----
     event GameStarted(address indexed player, uint256 indexed requestId, bytes32 pickCommit);
     event RandomnessReady(address indexed player, uint256 indexed requestId);
     event BoxRevealed(address indexed player, uint8 pickedIndex, uint8 winningIndex, bool won);
 
+    event VrfTimeoutCancelled(address indexed player, uint256 indexed requestId, uint256 refunded);
+    event RevealTimeoutForfeited(address indexed player, uint256 indexed requestId, uint256 burned);
+
     event TokenPurchased(address indexed buyer, uint256 tokenAmountWhole, uint256 paidWei);
+    event PayWithNativeSet(bool enabled);
 
     constructor(
         // ---- VRF ----
@@ -59,21 +72,29 @@ contract GameTokenSABU_VRF is
         bytes32 _keyHash,
         uint16 _requestConfirmations,
         uint32 _callbackGasLimit,
+        bool _payWithNative,
         // ---- Token ----
         uint256 initialSupplyWhole,
         uint256 maxSupplyWhole,
-        uint256 _tokenPriceWei
+        uint256 _tokenPriceWei,
+        // ---- Timeouts ----
+        uint256 _vrfTimeoutSeconds,
+        uint256 _revealTimeoutSeconds
     )
         ERC20("SabuTestToken", "SABU")
         VRFConsumerBaseV2Plus(vrfCoordinator)
     {
         require(maxSupplyWhole > 0, "maxSupply=0");
         require(_tokenPriceWei > 0, "tokenPrice=0");
+        require(_vrfTimeoutSeconds >= 60, "vrf timeout small");
+        require(_revealTimeoutSeconds >= 60, "reveal timeout small");
 
         subscriptionId = _subscriptionId;
         keyHash = _keyHash;
         requestConfirmations = _requestConfirmations;
         callbackGasLimit = _callbackGasLimit;
+
+        payWithNative = _payWithNative;
 
         tokenPriceWei = _tokenPriceWei;
         maxSupply = maxSupplyWhole * 10 ** decimals();
@@ -81,14 +102,22 @@ contract GameTokenSABU_VRF is
         entryFeeBase = 1 * 10 ** decimals();
         rewardBase   = 4 * 10 ** decimals();
 
+        vrfTimeoutSeconds = _vrfTimeoutSeconds;
+        revealTimeoutSeconds = _revealTimeoutSeconds;
+
         _mintWithCap(msg.sender, initialSupplyWhole * 10 ** decimals());
     }
 
     // --------------------
-    // Admin (Chainlink onlyOwner 사용: OZ Ownable 제거)
+    // Admin (Chainlink onlyOwner)
     // --------------------
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
+
+    function setPayWithNative(bool enabled) external onlyOwner {
+        payWithNative = enabled;
+        emit PayWithNativeSet(enabled);
+    }
 
     function mint(address to, uint256 amountBase) external onlyOwner {
         _mintWithCap(to, amountBase);
@@ -101,7 +130,7 @@ contract GameTokenSABU_VRF is
     }
 
     // --------------------
-    // Token Sale (옵션)
+    // Token Sale
     // --------------------
     function purchaseTokens(uint256 tokenAmountWhole) external payable whenNotPaused nonReentrant {
         require(tokenAmountWhole > 0, "amount=0");
@@ -116,7 +145,7 @@ contract GameTokenSABU_VRF is
     }
 
     // --------------------
-    // Commit helper (프론트에서 그대로 계산해도 됨)
+    // Commit helper
     // commit = keccak256(abi.encodePacked(player, pickedIndex, salt))
     // --------------------
     function makeCommit(address player, uint8 pickedIndex, bytes32 salt) public pure returns (bytes32) {
@@ -125,9 +154,9 @@ contract GameTokenSABU_VRF is
     }
 
     // --------------------
-    // Game (VRF) - Commit 먼저 받고, VRF 후 Reveal만
+    // Game (Escrow + Commit/Reveal + VRF)
     // --------------------
-    function startGame(bytes32 pickCommit, bool enableNativePayment)
+    function startGame(bytes32 pickCommit)
         external
         whenNotPaused
         nonReentrant
@@ -137,8 +166,7 @@ contract GameTokenSABU_VRF is
         require(s.state == GameState.NONE, "game already active");
         require(pickCommit != bytes32(0), "commit=0");
 
-        // 참가비 1 SABU 소각 (approve 불필요)
-        _burn(msg.sender, entryFeeBase);
+        _transfer(msg.sender, address(this), entryFeeBase);
 
         reqId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
@@ -148,7 +176,7 @@ contract GameTokenSABU_VRF is
                 callbackGasLimit: callbackGasLimit,
                 numWords: 1,
                 extraArgs: VRFV2PlusClient._argsToBytes(
-                    VRFV2PlusClient.ExtraArgsV1({ nativePayment: enableNativePayment })
+                    VRFV2PlusClient.ExtraArgsV1({ nativePayment: payWithNative })
                 )
             })
         );
@@ -158,7 +186,9 @@ contract GameTokenSABU_VRF is
             state: GameState.WAITING_VRF,
             requestId: reqId,
             pickCommit: pickCommit,
-            randomWord: 0
+            randomWord: 0,
+            startedAt: uint64(block.timestamp),
+            readyAt: 0
         });
 
         emit GameStarted(msg.sender, reqId, pickCommit);
@@ -173,6 +203,7 @@ contract GameTokenSABU_VRF is
 
         s.randomWord = randomWords[0];
         s.state = GameState.READY_TO_REVEAL;
+        s.readyAt = uint64(block.timestamp);
 
         delete requestToPlayer[requestId];
 
@@ -193,12 +224,12 @@ contract GameTokenSABU_VRF is
         bytes32 expected = keccak256(abi.encodePacked(msg.sender, pickedIndex, salt));
         require(expected == s.pickCommit, "bad reveal");
 
-        // VRF 결과로 정답 인덱스 결정
         winningIndex = uint8(s.randomWord % 4);
-
         won = (pickedIndex == winningIndex);
-        hasWon[msg.sender] = won;
 
+        _burn(address(this), entryFeeBase);
+
+        hasWon[msg.sender] = won;
         if (won) {
             _mintWithCap(msg.sender, rewardBase);
         }
@@ -208,14 +239,55 @@ contract GameTokenSABU_VRF is
         emit BoxRevealed(msg.sender, pickedIndex, winningIndex, won);
     }
 
+    /// @notice VRF가 너무 늦으면(구독 문제/가스 부족/네트워크 지연) 참가비 환불 + 세션 취소
+    /// @dev READY_TO_REVEAL 이후에는 환불 금지(정답 보고 환불 악용 방지)
+    function cancelAfterVrfTimeout() external nonReentrant {
+        Session memory s = sessions[msg.sender];
+        require(s.state == GameState.WAITING_VRF, "not waiting");
+        require(block.timestamp > uint256(s.startedAt) + vrfTimeoutSeconds, "not timed out");
+
+        delete requestToPlayer[s.requestId];
+        delete sessions[msg.sender];
+
+        _transfer(address(this), msg.sender, entryFeeBase);
+
+        emit VrfTimeoutCancelled(msg.sender, s.requestId, entryFeeBase);
+    }
+
+    /// @notice VRF는 왔는데 유저가 reveal을 안 하면 세션을 정리(참가비 소각)해서 다음 게임 가능하게 함
+    /// @dev 환불은 절대 없음(정답 확인 후 유리할 때만 reveal하는 전략을 차단)
+    function forfeitAfterRevealTimeout(address player) external nonReentrant {
+        Session memory s = sessions[player];
+        require(s.state == GameState.READY_TO_REVEAL, "not reveal state");
+        require(block.timestamp > uint256(s.readyAt) + revealTimeoutSeconds, "not timed out");
+
+        delete sessions[player];
+
+        _burn(address(this), entryFeeBase);
+
+        emit RevealTimeoutForfeited(player, s.requestId, entryFeeBase);
+    }
+
     // UI 조회용
     function getSession(address player)
         external
         view
-        returns (GameState state, uint256 requestId, bool readyToReveal)
+        returns (
+            GameState state,
+            uint256 requestId,
+            bool readyToReveal,
+            uint256 startedAt,
+            uint256 readyAt
+        )
     {
         Session memory s = sessions[player];
-        return (s.state, s.requestId, s.state == GameState.READY_TO_REVEAL);
+        return (
+            s.state,
+            s.requestId,
+            s.state == GameState.READY_TO_REVEAL,
+            uint256(s.startedAt),
+            uint256(s.readyAt)
+        );
     }
 
     // --------------------
@@ -224,9 +296,5 @@ contract GameTokenSABU_VRF is
     function _mintWithCap(address to, uint256 amountBase) internal {
         require(totalSupply() + amountBase <= maxSupply, "cap exceeded");
         _mint(to, amountBase);
-    }
-
-    function _update(address from, address to, uint256 value) internal override whenNotPaused {
-        super._update(from, to, value);
     }
 }
