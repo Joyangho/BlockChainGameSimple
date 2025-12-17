@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -14,7 +13,6 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
 contract GameTokenSABU_VRF is
     ERC20,
     ERC20Burnable,
-    Ownable,
     Pausable,
     ReentrancyGuard,
     VRFConsumerBaseV2Plus
@@ -35,37 +33,38 @@ contract GameTokenSABU_VRF is
     uint16 public immutable requestConfirmations;
     uint32 public immutable callbackGasLimit;
 
-    // ---- Game Session ----
-    enum GameState { NONE, WAITING_VRF, READY_TO_PICK }
+    // ---- Game Session (Commit/Reveal) ----
+    enum GameState { NONE, WAITING_VRF, READY_TO_REVEAL }
+
     struct Session {
         GameState state;
         uint256 requestId;
-        uint8 winningIndex; // 0~3
-        bool picked;
+        bytes32 pickCommit;   // keccak256(player, pickedIndex, salt)
+        uint256 randomWord;   // VRF 결과 (리빌 전까지는 "정답 인덱스"를 저장하지 않음)
     }
+
     mapping(address => Session) private sessions;
     mapping(uint256 => address) private requestToPlayer;
 
-    event GameStarted(address indexed player, uint256 indexed requestId);
-    event RandomnessReady(address indexed player, uint256 indexed requestId, uint8 winningIndex);
-    event BoxPicked(address indexed player, uint8 pickedIndex, bool won);
+    event GameStarted(address indexed player, uint256 indexed requestId, bytes32 pickCommit);
+    event RandomnessReady(address indexed player, uint256 indexed requestId);
+    event BoxRevealed(address indexed player, uint8 pickedIndex, uint8 winningIndex, bool won);
 
     event TokenPurchased(address indexed buyer, uint256 tokenAmountWhole, uint256 paidWei);
 
     constructor(
         // ---- VRF ----
-        address vrfCoordinator,          // 네트워크별 Coordinator 주소
-        uint256 _subscriptionId,         // Subscription ID
-        bytes32 _keyHash,                // Gas lane keyHash
-        uint16 _requestConfirmations,    // 보통 3~
-        uint32 _callbackGasLimit,        // fulfill 가스
+        address vrfCoordinator,
+        uint256 _subscriptionId,
+        bytes32 _keyHash,
+        uint16 _requestConfirmations,
+        uint32 _callbackGasLimit,
         // ---- Token ----
         uint256 initialSupplyWhole,
         uint256 maxSupplyWhole,
         uint256 _tokenPriceWei
     )
         ERC20("SabuTestToken", "SABU")
-        Ownable(msg.sender)
         VRFConsumerBaseV2Plus(vrfCoordinator)
     {
         require(maxSupplyWhole > 0, "maxSupply=0");
@@ -86,7 +85,7 @@ contract GameTokenSABU_VRF is
     }
 
     // --------------------
-    // Admin
+    // Admin (Chainlink onlyOwner 사용: OZ Ownable 제거)
     // --------------------
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
@@ -117,20 +116,30 @@ contract GameTokenSABU_VRF is
     }
 
     // --------------------
-    // Game (VRF)
+    // Commit helper (프론트에서 그대로 계산해도 됨)
+    // commit = keccak256(abi.encodePacked(player, pickedIndex, salt))
     // --------------------
+    function makeCommit(address player, uint8 pickedIndex, bytes32 salt) public pure returns (bytes32) {
+        require(pickedIndex < 4, "index 0~3");
+        return keccak256(abi.encodePacked(player, pickedIndex, salt));
+    }
 
-    /// @notice Start 버튼: 1 SABU 참가비(소각) + VRF 요청
-    /// @dev 프론트: 먼저 approve(entryFeeBase) 필요
-    /// @param enableNativePayment true=네이티브(예: ETH/MATIC)로 VRF 결제, false=LINK로 결제
-    function startGame(bool enableNativePayment) external whenNotPaused nonReentrant returns (uint256 reqId) {
+    // --------------------
+    // Game (VRF) - Commit 먼저 받고, VRF 후 Reveal만
+    // --------------------
+    function startGame(bytes32 pickCommit, bool enableNativePayment)
+        external
+        whenNotPaused
+        nonReentrant
+        returns (uint256 reqId)
+    {
         Session storage s = sessions[msg.sender];
         require(s.state == GameState.NONE, "game already active");
+        require(pickCommit != bytes32(0), "commit=0");
 
-        // 참가비 1 SABU 소각(=“사라짐” 요구사항 충족)
-        burnFrom(msg.sender, entryFeeBase);
+        // 참가비 1 SABU 소각 (approve 불필요)
+        _burn(msg.sender, entryFeeBase);
 
-        // VRF v2.5 request format (extraArgs 포함)
         reqId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
@@ -148,62 +157,65 @@ contract GameTokenSABU_VRF is
         sessions[msg.sender] = Session({
             state: GameState.WAITING_VRF,
             requestId: reqId,
-            winningIndex: 0,
-            picked: false
+            pickCommit: pickCommit,
+            randomWord: 0
         });
 
-        emit GameStarted(msg.sender, reqId);
+        emit GameStarted(msg.sender, reqId, pickCommit);
     }
 
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         address player = requestToPlayer[requestId];
-        require(player != address(0), "unknown request");
+        if (player == address(0)) return;
 
         Session storage s = sessions[player];
+        if (s.state != GameState.WAITING_VRF || s.requestId != requestId) return;
 
-        require(s.state == GameState.WAITING_VRF && s.requestId == requestId, "stale request");
-
-        uint8 win = uint8(randomWords[0] % 4);
-        s.winningIndex = win;
-        s.state = GameState.READY_TO_PICK;
+        s.randomWord = randomWords[0];
+        s.state = GameState.READY_TO_REVEAL;
 
         delete requestToPlayer[requestId];
 
-        emit RandomnessReady(player, requestId, win);
+        emit RandomnessReady(player, requestId);
     }
 
-    // 4개 버튼 중 1개 클릭(0~3) - 1회만 가능, 맞으면 즉시 4 SABU 민팅
-    function pickBox(uint8 pickedIndex) external whenNotPaused nonReentrant returns (bool won) {
+    function revealPick(uint8 pickedIndex, bytes32 salt)
+        external
+        whenNotPaused
+        nonReentrant
+        returns (bool won, uint8 winningIndex)
+    {
         require(pickedIndex < 4, "index 0~3");
 
-        Session storage s = sessions[msg.sender];
-        require(s.state == GameState.READY_TO_PICK, "not ready");
-        require(!s.picked, "already picked");
+        Session memory s = sessions[msg.sender];
+        require(s.state == GameState.READY_TO_REVEAL, "not ready");
 
-        s.picked = true;
-        s.state = GameState.NONE;
+        bytes32 expected = keccak256(abi.encodePacked(msg.sender, pickedIndex, salt));
+        require(expected == s.pickCommit, "bad reveal");
 
-        won = (pickedIndex == s.winningIndex);
+        // VRF 결과로 정답 인덱스 결정
+        winningIndex = uint8(s.randomWord % 4);
+
+        won = (pickedIndex == winningIndex);
         hasWon[msg.sender] = won;
 
         if (won) {
             _mintWithCap(msg.sender, rewardBase);
         }
 
-        emit BoxPicked(msg.sender, pickedIndex, won);
-
         delete sessions[msg.sender];
-        return won;
+
+        emit BoxRevealed(msg.sender, pickedIndex, winningIndex, won);
     }
 
     // UI 조회용
     function getSession(address player)
         external
         view
-        returns (GameState state, uint256 requestId, bool picked, bool readyToPick)
+        returns (GameState state, uint256 requestId, bool readyToReveal)
     {
         Session memory s = sessions[player];
-        return (s.state, s.requestId, s.picked, s.state == GameState.READY_TO_PICK);
+        return (s.state, s.requestId, s.state == GameState.READY_TO_REVEAL);
     }
 
     // --------------------
